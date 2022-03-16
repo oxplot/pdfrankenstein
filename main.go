@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"flag"
 	"fmt"
@@ -16,8 +17,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
+	"text/template"
 
 	"github.com/pkg/browser"
 )
@@ -27,6 +30,41 @@ var (
 	requireAuth     = flag.Bool("auth", true, "require authentication")
 	listen          = flag.String("listen", "127.0.0.1:0", "host:port to listen on")
 	authToken       string
+
+	srcBGPat = regexp.MustCompile(`<image[^>]*id="src-bg"[^>]*>`)
+	annotTpl = template.Must(template.New("").Funcs(map[string]any{
+		"stripunit": func(v string) string {
+			return strings.TrimRight(v, "x%npiemtc")
+		},
+	}).Parse(`<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="{{.Width}}"
+   height="{{.Height}}"
+   viewBox="{{.ViewBox}}"
+   version="1.1"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <image
+       id="src-bg"
+       preserveAspectRatio="none"
+       width="{{.Width | stripunit}}"
+       height="{{.Height | stripunit}}"
+       style="image-rendering:optimizeQuality"
+       xlink:href="{{.Href}}"
+       sodipodi:insensitive="true"
+       inkscape:svg-dpi="300"
+       x="0"
+       y="0" />
+  </g>
+</svg>
+`))
 
 	cacheRoot string
 )
@@ -183,6 +221,13 @@ func handleAnnotate(w http.ResponseWriter, r *http.Request) {
 	//    b. Export the (a) to a PDF in cache.
 	//    c. Return response to frontend.
 
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Add("Content-Type", "application/json")
+
 	annotId := r.URL.Query().Get("id")
 	path := r.URL.Query().Get("path")
 	page := r.URL.Query().Get("page")
@@ -193,8 +238,105 @@ func handleAnnotate(w http.ResponseWriter, r *http.Request) {
 
 	_ = os.MkdirAll(cacheRoot, 0750)
 
-	// Export PDF page to SVG
+	err := func() error {
 
+		// Export PDF page to SVG
+
+		srcPagePath := filepath.Join(cacheRoot, "annot-src-page-"+annotId+".svg")
+		cmd := exec.Command("inkscape", "--pdf-page="+page, "--export-type=svg",
+			"--pdf-poppler", "--export-filename="+srcPagePath, path)
+		if _, err := cmd.Output(); err != nil {
+			return fmt.Errorf("failed to convert page %s of '%s' to svg at '%s': %s", page, path, srcPagePath, err)
+		}
+
+		// Create a new SVG with above as background
+
+		svgPageSpecs := struct {
+			Width   string `xml:"width,attr"`
+			Height  string `xml:"height,attr"`
+			ViewBox string `xml:"viewBox,attr"`
+			Href    string `xml:"-"`
+		}{}
+		f, err := os.Open(srcPagePath)
+		if err != nil {
+			return fmt.Errorf("failed to open '%s': %s", srcPagePath, err)
+		}
+		if err := xml.NewDecoder(f).Decode(&svgPageSpecs); err != nil {
+			f.Close()
+			return fmt.Errorf("failed to convert page %s of '%s' to svg at '%s': %s", page, path, srcPagePath, err)
+		}
+		f.Close()
+
+		annotPath := filepath.Join(cacheRoot, "annot-"+annotId+".svg")
+		f, err = os.Create(annotPath)
+		if err != nil {
+			return fmt.Errorf("failed to create '%s': %s", annotPath, err)
+		}
+
+		svgPageSpecs.Href = srcPagePath
+		if err := annotTpl.Execute(f, svgPageSpecs); err != nil {
+			f.Close()
+			return fmt.Errorf("failed to write to '%s': %s", annotPath, err)
+		}
+		f.Close()
+
+		// Run Inkscape in GUI mode to edit the annotation file
+
+		beforeEditStat, err := os.Stat(annotPath)
+		if err != nil {
+			return fmt.Errorf("failed to stat '%s': %s", annotPath, err)
+		}
+
+		if _, err := exec.Command("inkscape", annotPath).Output(); err != nil {
+			return fmt.Errorf("inkscape exited with error while editing '%s': %s", annotPath, err)
+		}
+
+		afterEditStat, err := os.Stat(annotPath)
+		if err != nil {
+			return fmt.Errorf("failed to stat '%s': %s", annotPath, err)
+		}
+
+		// Unmodified annotation file results in immediate response back to client
+
+		if afterEditStat.ModTime() == beforeEditStat.ModTime() {
+			json.NewEncoder(w).Encode(struct {
+				Annotated bool `json:"annotated"`
+			}{})
+			return nil
+		}
+
+		// Otherwise, remove the background from the annotated file
+
+		b, err := ioutil.ReadFile(annotPath)
+		if err != nil {
+			return fmt.Errorf("failed to read back '%s': %s", annotPath, err)
+		}
+		b = srcBGPat.ReplaceAll(b, nil)
+		if err := ioutil.WriteFile(annotPath, b, 0644); err != nil {
+			return fmt.Errorf("failed to write back '%s': %s", annotPath, err)
+		}
+
+		// Convert the SVG annotation to PDF
+
+		annotPDFPath := filepath.Join(cacheRoot, "annot-"+annotId+".pdf")
+		cmd = exec.Command("inkscape", "--export-type=pdf", "--export-filename="+annotPDFPath, annotPath)
+		if _, err := cmd.Output(); err != nil {
+			return fmt.Errorf("failed to convert annotation SVG to PDF at '%s': %s", annotPDFPath, cmdErr(err))
+		}
+
+		json.NewEncoder(w).Encode(struct {
+			Annotated bool   `json:"annotated"`
+			Path      string `json:"path"`
+		}{true, annotPDFPath})
+
+		return nil
+	}()
+
+	if err != nil {
+		json.NewEncoder(w).Encode(struct {
+			Error string `json:"error"`
+		}{err.Error()})
+	}
 }
 
 func handleSave(w http.ResponseWriter, r *http.Request) {
