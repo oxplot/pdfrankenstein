@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -94,7 +95,7 @@ func calcPDFSignature(path string) (string, error) {
 	if _, err := io.ReadFull(f, tail); err != nil {
 		return "", err
 	}
-	sign := sha256.Sum256([]byte(fmt.Sprintf("%d,%d,%s", stat.Size(), stat.ModTime(), tail)))
+	sign := sha256.Sum256([]byte(fmt.Sprintf("%s,%d,%d,%s", authToken, stat.Size(), stat.ModTime(), tail)))
 	return fmt.Sprintf("%x", sign), nil
 }
 
@@ -131,12 +132,9 @@ func handleThumb(w http.ResponseWriter, r *http.Request) {
 
 	// Serve from cache if available
 
-	if f, err := os.Open(thumbPath); err == nil {
-		if _, err := io.Copy(w, f); err == nil {
-			f.Close()
-			return
-		}
-		f.Close()
+	if b, err := os.ReadFile(thumbPath); err == nil {
+		w.Write(b)
+		return
 	}
 
 	// Run inkscape to generate image
@@ -157,16 +155,14 @@ func handleThumb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	f, err := os.Open(thumbPath)
+	// Serve the image
+
+	b, err := os.ReadFile(thumbPath)
 	if err != nil {
-		log.Printf("failed to open '%s': %s", thumbPath, err)
+		log.Printf("failed to serve thumb '%s': %s", thumbPath, err)
 		w.WriteHeader(http.StatusInternalServerError)
-		return
 	}
-	defer f.Close()
-	if _, err := io.Copy(w, f); err != nil {
-		log.Printf("failed to read '%s': %s", thumbPath, err)
-	}
+	w.Write(b)
 }
 
 // handleAnnotate will open Inkscape with the given page of the given PDF file
@@ -184,9 +180,20 @@ func handleAnnotate(w http.ResponseWriter, r *http.Request) {
 	// 4. Upon Inkscape exit, test if (2) was modified (based on filesystem timestamp).
 	// 5. If modified:
 	//    a. Update (2) removing the background images.
-	//    b. Export the (a) to a temporary PDF.
-	//    c. Use qpdf to overlay (b) on top of the original page
-	// 6.
+	//    b. Export the (a) to a PDF in cache.
+	//    c. Return response to frontend.
+
+	annotId := r.URL.Query().Get("id")
+	path := r.URL.Query().Get("path")
+	page := r.URL.Query().Get("page")
+	if _, err := strconv.Atoi(page); err != nil || path == "" || annotId == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	_ = os.MkdirAll(cacheRoot, 0750)
+
+	// Export PDF page to SVG
 
 }
 
@@ -204,11 +211,18 @@ func authMiddleware(h http.Handler) http.Handler {
 }
 
 func run() error {
+
+	// Init cache
+
 	userCacheDir, err := os.UserCacheDir()
 	if err != nil {
 		return fmt.Errorf("cannot get user cache dir: %s", err)
 	}
 	cacheRoot = filepath.Join(userCacheDir, "pdfrankestein")
+	files, _ := ioutil.ReadDir(cacheRoot)
+	for _, f := range files {
+		_ = os.Remove(filepath.Join(cacheRoot, f.Name()))
+	}
 
 	authBytes := make([]byte, 32)
 	if _, err := rand.Read(authBytes); err != nil {
