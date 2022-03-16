@@ -99,10 +99,18 @@ func calcPDFSignature(path string) (string, error) {
 }
 
 func handleThumb(w http.ResponseWriter, r *http.Request) {
+
+	// Simple caching thumbnail generator:
+	// 1. Make a unique signature from the given PDF file.
+	// 2. Hash its last 1KB of data, its size and modified timestamp.
+	// 3. Check cache if the hash+page is already available.
+	// 3. If not, use inkscape to import the given PDF page and export it as a downsampled PNG.
+
 	w.Header().Add("Content-Type", "image/png")
 
 	path := r.URL.Query().Get("path")
 	page := r.URL.Query().Get("page")
+	hasBG := r.URL.Query().Get("bg") != ""
 	if _, err := strconv.Atoi(page); path == "" || err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
@@ -114,7 +122,12 @@ func handleThumb(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	thumbPath := filepath.Join(cacheRoot, sign) + "-" + page + ".png"
+
+	thumbPath := filepath.Join(cacheRoot, sign) + "-" + page
+	if hasBG {
+		thumbPath += "-bg"
+	}
+	thumbPath += ".png"
 
 	// Serve from cache if available
 
@@ -128,10 +141,16 @@ func handleThumb(w http.ResponseWriter, r *http.Request) {
 
 	// Run inkscape to generate image
 
+	exportOpacity := "0.0"
+	if hasBG {
+		exportOpacity = "1.0"
+	}
+
 	_ = os.MkdirAll(cacheRoot, 0750)
 	cmd := exec.Command("inkscape", "--pdf-page="+page, "--export-type=png",
 		"--export-area-page", "--export-dpi=20", "--pdf-poppler",
-		"--export-background=white", "--export-filename="+thumbPath, path)
+		"--export-background=white", "--export-background-opacity="+exportOpacity,
+		"--export-filename="+thumbPath, path)
 	if _, err := cmd.Output(); err != nil {
 		log.Printf("failed to generate thumb for page %s of '%s' in '%s': %s", page, path, thumbPath, cmdErr(err))
 		w.WriteHeader(http.StatusInternalServerError)
@@ -150,7 +169,25 @@ func handleThumb(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handleAnnotate will open Inkscape with the given page of the given PDF file
+// as a locked background over which the user can draw what they wish.
+// After saving and closing Inkscape, the HTTP request completes and the frontend
+// receives JSON {"annotated": bool, "path": string}. "annotated" is true if
+// the file was saved (based on its modified timestamp). "path" is a path to the
+// PDF of the annotated single page.
 func handleAnnotate(w http.ResponseWriter, r *http.Request) {
+
+	// 1. Inkscape export PDF page to SVG
+	// 2. Create a new SVG with (1) and instructions linked as background images
+	//    and locked.
+	// 3. Run Inkscape in GUI mode to edit (2).
+	// 4. Upon Inkscape exit, test if (2) was modified (based on filesystem timestamp).
+	// 5. If modified:
+	//    a. Update (2) removing the background images.
+	//    b. Export the (a) to a temporary PDF.
+	//    c. Use qpdf to overlay (b) on top of the original page
+	// 6.
+
 }
 
 func handleSave(w http.ResponseWriter, r *http.Request) {
