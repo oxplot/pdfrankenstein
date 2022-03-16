@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -9,18 +10,22 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 
-	"github.com/gorilla/csrf"
 	"github.com/pkg/browser"
 )
 
 var (
 	autoOpenBrowser = flag.Bool("auto-open-browser", true, "auto open browser")
-	enableCSRF      = flag.Bool("csrf", true, "enable CSRF protection")
+	requireAuth     = flag.Bool("auth", true, "require authentication")
 	listen          = flag.String("listen", "127.0.0.1:0", "host:port to listen on")
+	authToken       string
+
+	cacheRoot string
 )
 
 type PDFInfo struct {
@@ -40,15 +45,11 @@ func handleHome(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	fmt.Fprintf(w, "CSRF Token: %s", csrf.Token(r))
+	fmt.Fprintf(w, "Auth Token: %s", authToken)
 }
 
 func handleInfo(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	path := r.PostForm.Get("path")
+	path := r.URL.Query().Get("path")
 	if path == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		return
@@ -66,6 +67,7 @@ func handleInfo(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	w.Header().Add("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(PDFInfo{PageCount: p})
 }
 
@@ -78,28 +80,35 @@ func handleAnnotate(w http.ResponseWriter, r *http.Request) {
 func handleSave(w http.ResponseWriter, r *http.Request) {
 }
 
-func onlyPost(h http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			w.WriteHeader(http.StatusMethodNotAllowed)
+func authMiddleware(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" || r.URL.Query().Get("auth") == authToken {
+			h.ServeHTTP(w, r)
 			return
 		}
-		h(w, r)
-	}
+		w.WriteHeader(http.StatusUnauthorized)
+	})
 }
 
 func run() error {
-	csrfSecret := make([]byte, 32)
-	if _, err := rand.Read(csrfSecret); err != nil {
-		return fmt.Errorf("failed to generate CSRF secret: %w", err)
+	userCacheDir, err := os.UserCacheDir()
+	if err != nil {
+		return fmt.Errorf("cannot get user cache dir: %w", err)
 	}
+	cacheRoot = filepath.Join(userCacheDir, "pdfrankestein")
+
+	authBytes := make([]byte, 32)
+	if _, err := rand.Read(authBytes); err != nil {
+		return fmt.Errorf("failed to generate auth token: %w", err)
+	}
+	authToken = hex.EncodeToString(authBytes)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", handleHome)
-	mux.HandleFunc("/info", onlyPost(handleInfo))
-	mux.HandleFunc("/thumb", onlyPost(handleThumb))
-	mux.HandleFunc("/annotate", onlyPost(handleAnnotate))
-	mux.HandleFunc("/save", onlyPost(handleSave))
+	mux.HandleFunc("/info", handleInfo)
+	mux.HandleFunc("/thumb", handleThumb)
+	mux.HandleFunc("/annotate", handleAnnotate)
+	mux.HandleFunc("/save", handleSave)
 
 	l, err := net.Listen("tcp", *listen)
 	if err != nil {
@@ -113,8 +122,8 @@ func run() error {
 	}
 
 	h := http.Handler(mux)
-	if *enableCSRF {
-		h = csrf.Protect(csrfSecret, csrf.FieldName("csrf"), csrf.CookieName("csrf"))(h)
+	if *requireAuth {
+		h = authMiddleware(h)
 	}
 	return http.Serve(l, h)
 }
