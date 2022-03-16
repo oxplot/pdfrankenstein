@@ -69,10 +69,6 @@ var (
 	cacheRoot string
 )
 
-type PDFInfo struct {
-	PageCount int `json:"pageCount"`
-}
-
 func cmdErr(err error) error {
 	var exitErr *exec.ExitError
 	if errors.As(err, &exitErr) {
@@ -88,27 +84,16 @@ func handleHome(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handleInfo(w http.ResponseWriter, r *http.Request) {
-	path := r.URL.Query().Get("path")
-	if path == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
+func getPageCount(path string) (int, error) {
 	out, err := exec.Command("qpdf", "--show-npages", path).Output()
 	if err != nil {
-		json.NewEncoder(w).Encode(struct {
-			Error string `json:"error"`
-		}{cmdErr(err).Error()})
-		return
+		return 0, cmdErr(err)
 	}
 	p, err := strconv.Atoi(strings.TrimSpace(string(out)))
 	if err != nil {
-		log.Printf("cannot convert page count: %s", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
+		return 0, fmt.Errorf("cannot convert page count: %s", err)
 	}
-	w.Header().Add("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(PDFInfo{PageCount: p})
+	return p, nil
 }
 
 func calcPDFSignature(path string) (string, error) {
@@ -365,14 +350,38 @@ func run() error {
 
 	var openedContent *fyne.Container
 
+	var pages []*widget.Button
+	pageGrid := container.NewGridWrap(fyne.NewSize(100, 100))
+
 	startContent := container.NewCenter(widget.NewButton("Open PDF File", func() {
 		dialog.ShowFileOpen(func(r fyne.URIReadCloser, err error) {
-			if r != nil {
-				r.Close()
-				fileNameLabel.SetText(r.URI().Name())
-				filePathLabel.SetText(r.URI().String())
-				win.SetContent(openedContent)
+			if err != nil || r == nil {
+				dialog.ShowError(err, win)
+				return
 			}
+			r.Close()
+			path := r.URI().String()
+			if !strings.HasPrefix(path, "file://") {
+				dialog.ShowError(fmt.Errorf("invalid file selected"), win)
+				return
+			}
+			path = strings.TrimPrefix(path, "file://")
+			pageCount, err := getPageCount(path)
+			if err != nil {
+				dialog.ShowError(err, win)
+				return
+			}
+			pages = make([]*widget.Button, pageCount)
+			for i := range pages {
+				p := widget.NewButton("p."+strconv.Itoa(i+1), func() {
+					// TODO Annotate
+				})
+				pages[i] = p
+				pageGrid.Add(p)
+			}
+			fileNameLabel.SetText(r.URI().Name())
+			filePathLabel.SetText(path)
+			win.SetContent(openedContent)
 		}, win)
 	}))
 
@@ -383,6 +392,7 @@ func run() error {
 				widget.NewButton("Save", func() {
 				}),
 				widget.NewButton("Close", func() {
+					pageGrid.Objects = nil
 					win.SetContent(startContent)
 				}),
 			),
@@ -392,19 +402,7 @@ func run() error {
 			),
 		),
 		nil, nil, nil,
-		container.NewVScroll(
-			container.NewGridWrap(
-				fyne.NewSize(100, 100),
-				widget.NewCard("title", "subtitle", nil),
-				widget.NewCard("title", "subtitle", nil),
-				widget.NewCard("title", "subtitle", nil),
-				widget.NewCard("title", "subtitle", nil),
-				widget.NewCard("title", "subtitle", nil),
-				widget.NewCard("title", "subtitle", nil),
-				widget.NewCard("title", "subtitle", nil),
-				widget.NewCard("title", "subtitle", nil),
-			),
-		),
+		container.NewVScroll(pageGrid),
 	)
 
 	win.Resize(fyne.NewSize(600, 500))
