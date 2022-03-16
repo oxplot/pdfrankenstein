@@ -19,8 +19,15 @@ import (
 	"strings"
 	"text/template"
 
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
+	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
+)
+
+const (
+	progName = "PDFrankestein"
 )
 
 var (
@@ -348,11 +355,61 @@ func run() error {
 		_ = os.Remove(filepath.Join(cacheRoot, f.Name()))
 	}
 
-	a := app.New()
-	w := a.NewWindow("Hello World")
+	// Init GUI
 
-	w.SetContent(widget.NewLabel("Hello World!"))
-	w.ShowAndRun()
+	ap := app.New()
+	win := ap.NewWindow(progName)
+
+	fileNameLabel := widget.NewLabel("abc.pdf")
+	filePathLabel := widget.NewLabel("/home/...")
+
+	var openedContent *fyne.Container
+
+	startContent := container.NewCenter(widget.NewButton("Open PDF File", func() {
+		dialog.ShowFileOpen(func(r fyne.URIReadCloser, err error) {
+			if r != nil {
+				r.Close()
+				fileNameLabel.SetText(r.URI().Name())
+				filePathLabel.SetText(r.URI().String())
+				win.SetContent(openedContent)
+			}
+		}, win)
+	}))
+
+	openedContent = container.NewBorder(
+		container.NewBorder(
+			nil, nil, nil,
+			container.NewHBox(
+				widget.NewButton("Save", func() {
+				}),
+				widget.NewButton("Close", func() {
+					win.SetContent(startContent)
+				}),
+			),
+			container.NewVBox(
+				fileNameLabel,
+				filePathLabel,
+			),
+		),
+		nil, nil, nil,
+		container.NewVScroll(
+			container.NewGridWrap(
+				fyne.NewSize(100, 100),
+				widget.NewCard("title", "subtitle", nil),
+				widget.NewCard("title", "subtitle", nil),
+				widget.NewCard("title", "subtitle", nil),
+				widget.NewCard("title", "subtitle", nil),
+				widget.NewCard("title", "subtitle", nil),
+				widget.NewCard("title", "subtitle", nil),
+				widget.NewCard("title", "subtitle", nil),
+				widget.NewCard("title", "subtitle", nil),
+			),
+		),
+	)
+
+	win.Resize(fyne.NewSize(600, 500))
+	win.SetContent(startContent)
+	win.ShowAndRun()
 
 	return nil
 }
