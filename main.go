@@ -2,11 +2,13 @@ package main
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -63,7 +65,7 @@ func handleInfo(w http.ResponseWriter, r *http.Request) {
 	}
 	p, err := strconv.Atoi(strings.TrimSpace(string(out)))
 	if err != nil {
-		log.Printf("cannot convert page count: %w", err)
+		log.Printf("cannot convert page count: %s", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -71,7 +73,81 @@ func handleInfo(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(PDFInfo{PageCount: p})
 }
 
+func calcPDFSignature(path string) (string, error) {
+	stat, err := os.Stat(path)
+	if err != nil {
+		return "", err
+	}
+	tail := make([]byte, 1024)
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	s := stat.Size() - int64(len(tail))
+	if s < 0 {
+		s = 0
+	}
+	if _, err := f.Seek(s, 0); err != nil {
+		return "", err
+	}
+	if _, err := io.ReadFull(f, tail); err != nil {
+		return "", err
+	}
+	sign := sha256.Sum256([]byte(fmt.Sprintf("%d,%d,%s", stat.Size(), stat.ModTime(), tail)))
+	return fmt.Sprintf("%x", sign), nil
+}
+
 func handleThumb(w http.ResponseWriter, r *http.Request) {
+	w.Header().Add("Content-Type", "image/png")
+
+	path := r.URL.Query().Get("path")
+	page := r.URL.Query().Get("page")
+	if _, err := strconv.Atoi(page); path == "" || err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	sign, err := calcPDFSignature(path)
+	if err != nil {
+		log.Printf("cannot calc PDF signature for %s: %s", path, err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	thumbPath := filepath.Join(cacheRoot, sign) + "-" + page + ".png"
+
+	// Serve from cache if available
+
+	if f, err := os.Open(thumbPath); err == nil {
+		if _, err := io.Copy(w, f); err == nil {
+			f.Close()
+			return
+		}
+		f.Close()
+	}
+
+	// Run inkscape to generate image
+
+	_ = os.MkdirAll(cacheRoot, 0750)
+	cmd := exec.Command("inkscape", "--pdf-page="+page, "--export-type=png",
+		"--export-area-page", "--export-dpi=20", "--pdf-poppler",
+		"--export-background=white", "--export-filename="+thumbPath, path)
+	if _, err := cmd.Output(); err != nil {
+		log.Printf("failed to generate thumb for page %s of '%s' in '%s': %s", page, path, thumbPath, cmdErr(err))
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	f, err := os.Open(thumbPath)
+	if err != nil {
+		log.Printf("failed to open '%s': %s", thumbPath, err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	defer f.Close()
+	if _, err := io.Copy(w, f); err != nil {
+		log.Printf("failed to read '%s': %s", thumbPath, err)
+	}
 }
 
 func handleAnnotate(w http.ResponseWriter, r *http.Request) {
@@ -93,13 +169,13 @@ func authMiddleware(h http.Handler) http.Handler {
 func run() error {
 	userCacheDir, err := os.UserCacheDir()
 	if err != nil {
-		return fmt.Errorf("cannot get user cache dir: %w", err)
+		return fmt.Errorf("cannot get user cache dir: %s", err)
 	}
 	cacheRoot = filepath.Join(userCacheDir, "pdfrankestein")
 
 	authBytes := make([]byte, 32)
 	if _, err := rand.Read(authBytes); err != nil {
-		return fmt.Errorf("failed to generate auth token: %w", err)
+		return fmt.Errorf("failed to generate auth token: %s", err)
 	}
 	authToken = hex.EncodeToString(authBytes)
 
@@ -112,7 +188,7 @@ func run() error {
 
 	l, err := net.Listen("tcp", *listen)
 	if err != nil {
-		return fmt.Errorf("failed to listen on localhost port: %w", err)
+		return fmt.Errorf("failed to listen on localhost port: %s", err)
 	}
 	defer l.Close()
 
