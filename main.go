@@ -1,9 +1,7 @@
 package main
 
 import (
-	"crypto/rand"
 	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -12,7 +10,6 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -22,15 +19,11 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/pkg/browser"
+	"fyne.io/fyne/v2/app"
+	"fyne.io/fyne/v2/widget"
 )
 
 var (
-	autoOpenBrowser = flag.Bool("auto-open-browser", true, "auto open browser")
-	requireAuth     = flag.Bool("auth", true, "require authentication")
-	listen          = flag.String("listen", "127.0.0.1:0", "host:port to listen on")
-	authToken       string
-
 	srcBGPat = regexp.MustCompile(`<image[^>]*id="src-bg"[^>]*>`)
 	annotTpl = template.Must(template.New("").Funcs(map[string]any{
 		"stripunit": func(v string) string {
@@ -86,7 +79,6 @@ func handleHome(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	fmt.Fprintf(w, "Auth Token: %s", authToken)
 }
 
 func handleInfo(w http.ResponseWriter, r *http.Request) {
@@ -133,7 +125,7 @@ func calcPDFSignature(path string) (string, error) {
 	if _, err := io.ReadFull(f, tail); err != nil {
 		return "", err
 	}
-	sign := sha256.Sum256([]byte(fmt.Sprintf("%s,%d,%d,%s", authToken, stat.Size(), stat.ModTime(), tail)))
+	sign := sha256.Sum256([]byte(fmt.Sprintf("%s,%d,%d,%s", stat.Size(), stat.ModTime(), tail)))
 	return fmt.Sprintf("%x", sign), nil
 }
 
@@ -342,16 +334,6 @@ func handleAnnotate(w http.ResponseWriter, r *http.Request) {
 func handleSave(w http.ResponseWriter, r *http.Request) {
 }
 
-func authMiddleware(h http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/" || r.URL.Query().Get("auth") == authToken {
-			h.ServeHTTP(w, r)
-			return
-		}
-		w.WriteHeader(http.StatusUnauthorized)
-	})
-}
-
 func run() error {
 
 	// Init cache
@@ -366,35 +348,13 @@ func run() error {
 		_ = os.Remove(filepath.Join(cacheRoot, f.Name()))
 	}
 
-	authBytes := make([]byte, 32)
-	if _, err := rand.Read(authBytes); err != nil {
-		return fmt.Errorf("failed to generate auth token: %s", err)
-	}
-	authToken = hex.EncodeToString(authBytes)
+	a := app.New()
+	w := a.NewWindow("Hello World")
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", handleHome)
-	mux.HandleFunc("/info", handleInfo)
-	mux.HandleFunc("/thumb", handleThumb)
-	mux.HandleFunc("/annotate", handleAnnotate)
-	mux.HandleFunc("/save", handleSave)
+	w.SetContent(widget.NewLabel("Hello World!"))
+	w.ShowAndRun()
 
-	l, err := net.Listen("tcp", *listen)
-	if err != nil {
-		return fmt.Errorf("failed to listen on localhost port: %s", err)
-	}
-	defer l.Close()
-
-	log.Printf("Listening on http://%s/", l.Addr())
-	if *autoOpenBrowser {
-		go browser.OpenURL("http://" + l.Addr().String())
-	}
-
-	h := http.Handler(mux)
-	if *requireAuth {
-		h = authMiddleware(h)
-	}
-	return http.Serve(l, h)
+	return nil
 }
 
 func main() {
