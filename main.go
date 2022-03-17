@@ -92,7 +92,8 @@ func run() error {
 
 	var openedContent *fyne.Container
 
-	editingMsg := container.NewCenter(widget.NewLabel("Annotating in Inkscape"))
+	editingMsg := container.NewCenter(widget.NewLabel("Annotating in Inkscape ..."))
+	savingMsg := container.NewCenter(widget.NewLabel("Saving ..."))
 	gridScroll := container.NewVScroll(widget.NewLabel(""))
 
 	startContent := container.NewCenter(widget.NewButton("Open PDF File", func() {
@@ -153,6 +154,24 @@ func run() error {
 			nil, nil, nil,
 			container.NewHBox(
 				widget.NewButton("Save", func() {
+					dialog.ShowFileSave(func(w fyne.URIWriteCloser, err error) {
+						if err != nil {
+							dialog.ShowError(err, win)
+							return
+						}
+						w.Close()
+						path := w.URI().String()
+						if !strings.HasPrefix(path, "file://") {
+							dialog.ShowError(fmt.Errorf("invalid file selected"), win)
+							return
+						}
+						path = strings.TrimPrefix(path, "file://")
+						win.SetContent(savingMsg)
+						if err := sess.Save(path); err != nil {
+							dialog.ShowError(err, win)
+						}
+						win.SetContent(openedContent)
+					}, win)
 				}),
 				widget.NewButton("Close", func() {
 					gridScroll.Content = widget.NewLabel("")

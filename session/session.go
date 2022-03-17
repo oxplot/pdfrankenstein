@@ -4,6 +4,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -59,6 +60,21 @@ func cmdErr(err error) error {
 	return err
 }
 
+func fileCopy(src, dst string) error {
+	fin, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer fin.Close()
+	fout, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer fout.Close()
+	_, err = io.Copy(fout, fin)
+	return err
+}
+
 type Session struct {
 	path      string
 	pageCount int
@@ -85,15 +101,18 @@ func New(path string) (*Session, error) {
 		return nil, fmt.Errorf("failed to create temp directory: %s", err)
 	}
 
-	return &Session{path: path, pageCount: p, tmpDir: tmpDir}, nil
+	// Make our own copy
+
+	copyPath := filepath.Join(tmpDir, "src.pdf")
+	if err := fileCopy(path, copyPath); err != nil {
+		return nil, err
+	}
+
+	return &Session{path: copyPath, pageCount: p, tmpDir: tmpDir}, nil
 }
 
 func (s *Session) PageCount() int {
 	return s.pageCount
-}
-
-func (s *Session) Path() string {
-	return s.path
 }
 
 func (s *Session) Thumbnail(page int) (string, error) {
@@ -112,7 +131,7 @@ func (s *Session) Thumbnail(page int) (string, error) {
 
 	// Otherwise, run inkscape to generate image
 
-	cmd := exec.Command("inkscape", "--pdf-page="+strconv.Itoa(page), "--export-type=png",
+	cmd := exec.Command("inkscape", "--pdf-page="+strconv.Itoa(page+1), "--export-type=png",
 		"--export-area-page", "--export-dpi=20", "--pdf-poppler",
 		"--export-background=white", "--export-filename="+thumbPath+".tmp", s.path)
 	if _, err := cmd.Output(); err != nil {
@@ -133,7 +152,7 @@ func (s *Session) Annotate(page int) (bool, error) {
 
 	srcPath := s.srcPath(page)
 	if _, err := os.Stat(srcPath); err != nil {
-		cmd := exec.Command("inkscape", "--pdf-page="+strconv.Itoa(page), "--export-type=svg",
+		cmd := exec.Command("inkscape", "--pdf-page="+strconv.Itoa(page+1), "--export-type=svg",
 			"--pdf-poppler", "--export-filename="+srcPath+".svg", s.path)
 		if _, err := cmd.Output(); err != nil {
 			return false, fmt.Errorf("failed to convert page %s of '%s' to svg: %s", page, s.path, cmdErr(err))
@@ -227,32 +246,75 @@ func (s *Session) Clear(page int) {
 }
 
 func (s *Session) Save(path string) error {
-	/*
-		// Otherwise, remove the background from the annotated file
+
+	// Covert all annotated pages to PDF
+
+	annoted := []int{}
+	for i := 0; i < s.pageCount; i++ {
+		if !s.IsAnnotated(i) {
+			continue
+		}
+		annoted = append(annoted, i)
+
+		annotPath := s.annotPath(i)
+
+		// Remove the backgrounds
 
 		b, err := ioutil.ReadFile(annotPath)
 		if err != nil {
 			return fmt.Errorf("failed to read back '%s': %s", annotPath, err)
 		}
 		b = srcBGPat.ReplaceAll(b, nil)
-		if err := ioutil.WriteFile(annotPath, b, 0644); err != nil {
+		if err := ioutil.WriteFile(annotPath+".cleaned.svg", b, 0644); err != nil {
 			return fmt.Errorf("failed to write back '%s': %s", annotPath, err)
 		}
 
-		// Convert the SVG annotation to PDF
+		// Convert to PDF
 
-		annotPDFPath := filepath.Join(tmpRoot, "annot-"+annotId+".pdf")
-		cmd = exec.Command("inkscape", "--export-type=pdf", "--export-filename="+annotPDFPath, annotPath)
+		cmd := exec.Command("inkscape", "--export-type=pdf",
+			"--export-filename="+annotPath+".pdf", annotPath+".cleaned.svg")
 		if _, err := cmd.Output(); err != nil {
-			return fmt.Errorf("failed to convert annotation SVG to PDF at '%s': %s", annotPDFPath, cmdErr(err))
+			return fmt.Errorf("failed to convert annotation SVG ('%s') to PDF: %s", annotPath, cmdErr(err))
 		}
+	}
 
-		json.NewEncoder(w).Encode(struct {
-			Annotated bool   `json:"annotated"`
-			Path      string `json:"path"`
-		}{true, annotPDFPath})
-	*/
-	return nil
+	// Shortcut for when no page is annotated
+
+	if len(annoted) == 0 {
+		return fileCopy(s.path, path)
+	}
+
+	// Append all annotated PDFs into a single PDF
+
+	overlayPath := filepath.Join(s.tmpDir, "overlay.pdf")
+
+	args := []string{"--empty", "--pages"}
+	for _, p := range annoted {
+		args = append(args, s.annotPath(p)+".pdf")
+	}
+	args = append(args, "--", overlayPath)
+
+	cmd := exec.Command("qpdf", args...)
+	if _, err := cmd.Output(); err != nil {
+		return fmt.Errorf("failed to merge annotated pages to '%s': %s", overlayPath, cmdErr(err))
+	}
+
+	// Overlay and create the final file
+
+	finalPath := filepath.Join(s.tmpDir, "final.pdf")
+
+	annotedStr := make([]string, len(annoted))
+	for i, p := range annoted {
+		annotedStr[i] = strconv.Itoa(p + 1)
+	}
+	pageRange := strings.Join(annotedStr, ",")
+
+	cmd = exec.Command("qpdf", s.path, "--overlay", overlayPath, "--to="+pageRange, "--", finalPath)
+	if _, err := cmd.Output(); err != nil {
+		return fmt.Errorf("failed to overlay annotated pages to '%s': %s", finalPath, cmdErr(err))
+	}
+
+	return fileCopy(finalPath, path)
 }
 
 func (s *Session) Close() {
