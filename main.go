@@ -66,7 +66,7 @@ var (
 </svg>
 `))
 
-	cacheRoot string
+	tmpRoot string
 )
 
 func cmdErr(err error) error {
@@ -146,7 +146,7 @@ func handleThumb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	thumbPath := filepath.Join(cacheRoot, sign) + "-" + page
+	thumbPath := filepath.Join(tmpRoot, sign) + "-" + page
 	if hasBG {
 		thumbPath += "-bg"
 	}
@@ -166,7 +166,7 @@ func handleThumb(w http.ResponseWriter, r *http.Request) {
 		exportOpacity = "1.0"
 	}
 
-	_ = os.MkdirAll(cacheRoot, 0750)
+	_ = os.MkdirAll(tmpRoot, 0750)
 	cmd := exec.Command("inkscape", "--pdf-page="+page, "--export-type=png",
 		"--export-area-page", "--export-dpi=20", "--pdf-poppler",
 		"--export-background=white", "--export-background-opacity="+exportOpacity,
@@ -220,13 +220,13 @@ func handleAnnotate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = os.MkdirAll(cacheRoot, 0750)
+	_ = os.MkdirAll(tmpRoot, 0750)
 
 	err := func() error {
 
 		// Export PDF page to SVG
 
-		srcPagePath := filepath.Join(cacheRoot, "annot-src-page-"+annotId+".svg")
+		srcPagePath := filepath.Join(tmpRoot, "annot-src-page-"+annotId+".svg")
 		cmd := exec.Command("inkscape", "--pdf-page="+page, "--export-type=svg",
 			"--pdf-poppler", "--export-filename="+srcPagePath, path)
 		if _, err := cmd.Output(); err != nil {
@@ -251,7 +251,7 @@ func handleAnnotate(w http.ResponseWriter, r *http.Request) {
 		}
 		f.Close()
 
-		annotPath := filepath.Join(cacheRoot, "annot-"+annotId+".svg")
+		annotPath := filepath.Join(tmpRoot, "annot-"+annotId+".svg")
 		f, err = os.Create(annotPath)
 		if err != nil {
 			return fmt.Errorf("failed to create '%s': %s", annotPath, err)
@@ -302,7 +302,7 @@ func handleAnnotate(w http.ResponseWriter, r *http.Request) {
 
 		// Convert the SVG annotation to PDF
 
-		annotPDFPath := filepath.Join(cacheRoot, "annot-"+annotId+".pdf")
+		annotPDFPath := filepath.Join(tmpRoot, "annot-"+annotId+".pdf")
 		cmd = exec.Command("inkscape", "--export-type=pdf", "--export-filename="+annotPDFPath, annotPath)
 		if _, err := cmd.Output(); err != nil {
 			return fmt.Errorf("failed to convert annotation SVG to PDF at '%s': %s", annotPDFPath, cmdErr(err))
@@ -330,15 +330,18 @@ func run() error {
 
 	// Init cache
 
-	userCacheDir, err := os.UserCacheDir()
+	tmpRoot, err := ioutil.TempDir("", "pdfrankestein-*")
 	if err != nil {
-		return fmt.Errorf("cannot get user cache dir: %s", err)
+		return err
 	}
-	cacheRoot = filepath.Join(userCacheDir, "pdfrankestein")
-	files, _ := ioutil.ReadDir(cacheRoot)
-	for _, f := range files {
-		_ = os.Remove(filepath.Join(cacheRoot, f.Name()))
-	}
+	defer func() {
+		// Cleanup temp
+		files, _ := ioutil.ReadDir(tmpRoot)
+		for _, f := range files {
+			_ = os.Remove(filepath.Join(tmpRoot, f.Name()))
+		}
+		_ = os.Remove(tmpRoot)
+	}()
 
 	// Init GUI
 
