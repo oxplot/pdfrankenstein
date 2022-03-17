@@ -134,11 +134,11 @@ func (s *Session) Annotate(page int) (bool, error) {
 	srcPath := s.srcPath(page)
 	if _, err := os.Stat(srcPath); err != nil {
 		cmd := exec.Command("inkscape", "--pdf-page="+strconv.Itoa(page), "--export-type=svg",
-			"--pdf-poppler", "--export-filename="+srcPath+".tmp", s.path)
+			"--pdf-poppler", "--export-filename="+srcPath+".svg", s.path)
 		if _, err := cmd.Output(); err != nil {
 			return false, fmt.Errorf("failed to convert page %s of '%s' to svg: %s", page, s.path, cmdErr(err))
 		}
-		_ = os.Rename(srcPath+".tmp", srcPath)
+		_ = os.Rename(srcPath+".svg", srcPath)
 	}
 
 	// Create a new SVG with above as background (if needed)

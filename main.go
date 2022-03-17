@@ -4,6 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
+	"os/signal"
 	"strconv"
 	"strings"
 
@@ -25,6 +27,23 @@ func run() error {
 	ap := app.New()
 	win := ap.NewWindow(progName)
 
+	var sess *session.Session
+	sig := make(chan os.Signal, 1)
+	done := make(chan struct{}, 1)
+	signal.Notify(sig, os.Interrupt)
+	go func() {
+		select {
+		case <-sig:
+			break
+		case <-done:
+			break
+		}
+		if sess != nil {
+			sess.Close()
+		}
+		win.Close()
+	}()
+
 	fileNameLabel := widget.NewLabel("abc.pdf")
 	filePathLabel := widget.NewLabel("/home/...")
 
@@ -33,7 +52,7 @@ func run() error {
 	var pages []*widget.Button
 	pageGrid := container.NewGridWrap(fyne.NewSize(100, 100))
 
-	var sess *session.Session
+	editingMsg := container.NewCenter(widget.NewLabel("Annotating in Inkscape"))
 
 	startContent := container.NewCenter(widget.NewButton("Open PDF File", func() {
 		dialog.ShowFileOpen(func(r fyne.URIReadCloser, err error) {
@@ -56,9 +75,16 @@ func run() error {
 			}
 			pages = make([]*widget.Button, sess.PageCount())
 			for i := range pages {
-				p := widget.NewButton("p."+strconv.Itoa(i+1), func() {
-					sess.Annotate(i)
-				})
+				p := func(page int) *widget.Button {
+					return widget.NewButton("p."+strconv.Itoa(page+1), func() {
+						win.SetContent(editingMsg)
+						_, err := sess.Annotate(page)
+						if err != nil {
+							dialog.ShowError(err, win)
+						}
+						win.SetContent(openedContent)
+					})
+				}(i)
 				pages[i] = p
 				pageGrid.Add(p)
 			}
@@ -77,6 +103,8 @@ func run() error {
 				}),
 				widget.NewButton("Close", func() {
 					pageGrid.Objects = nil
+					sess.Close()
+					sess = nil
 					win.SetContent(startContent)
 				}),
 			),
