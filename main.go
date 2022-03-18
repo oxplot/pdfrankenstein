@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 
 	"fyne.io/fyne/v2"
@@ -30,23 +31,29 @@ var (
 type PageGrid struct {
 	labels []*widget.Label
 	thumbs []*canvas.Image
+	clears []*widget.Button
 	root   *fyne.Container
 }
 
-func NewPageGrid(pageCount int, tapHandler func(page int)) *PageGrid {
+func NewPageGrid(pageCount int, tapHandler func(page int), clearHandler func(page int)) *PageGrid {
 	labels := make([]*widget.Label, pageCount)
 	thumbs := make([]*canvas.Image, pageCount)
+	clears := make([]*widget.Button, pageCount)
 	root := container.NewGridWrap(fyne.NewSize(150, 150))
 	for i := range labels {
-		labels[i] = widget.NewLabel(gridPageLabel(i, ""))
+		labels[i] = widget.NewLabel(strconv.Itoa(i + 1))
 		labels[i].Alignment = fyne.TextAlignCenter
 		thumbs[i] = canvas.NewImageFromImage(emptyImg)
 		thumbs[i].FillMode = canvas.ImageFillContain
+		func(i int) { clears[i] = widget.NewButton("clear annots", func() { clearHandler(i) }) }(i)
+		clears[i].Hide()
 		var button *widget.Button
 		func(i int) { button = widget.NewButton("", func() { tapHandler(i) }) }(i)
-		root.Add(container.NewBorder(nil, labels[i], nil, nil, container.NewMax(thumbs[i], button)))
+		root.Add(container.NewBorder(nil,
+			container.NewBorder(nil, nil, nil, clears[i], labels[i]),
+			nil, nil, container.NewMax(thumbs[i], button)))
 	}
-	return &PageGrid{labels, thumbs, root}
+	return &PageGrid{labels, thumbs, clears, root}
 }
 
 func (g *PageGrid) Root() *fyne.Container {
@@ -57,12 +64,13 @@ func (g *PageGrid) SetThumbnail(page int, img image.Image) {
 	g.thumbs[page].Image = img
 }
 
-func gridPageLabel(page int, note string) string {
-	return fmt.Sprintf("%d %s", page+1, note)
-}
-
-func (g *PageGrid) SetNote(page int, note string) {
-	g.labels[page].SetText(gridPageLabel(page, note))
+func (g *PageGrid) SetAnnotated(page int, annotated bool) {
+	if annotated {
+		g.clears[page].Show()
+	} else {
+		g.clears[page].Hide()
+	}
+	g.root.Refresh()
 }
 
 func run() error {
@@ -135,11 +143,10 @@ func run() error {
 				if modified {
 					grid.SetThumbnail(page, nil)
 				}
-				if sess.IsAnnotated(page) {
-					grid.SetNote(page, "(annotated)")
-				} else {
-					grid.SetNote(page, "")
-				}
+				grid.SetAnnotated(page, sess.IsAnnotated(page))
+			}, func(page int) {
+				sess.Clear(page)
+				grid.SetAnnotated(page, false)
 			})
 
 			gridScroll.Content = grid.Root()
