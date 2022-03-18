@@ -16,8 +16,9 @@ You need a recent version of [Inkscape](https://inkscape.org/) and
 
 ## Download
 
-Download the latest version from the [releases page](TODO).
-Alternatively, you can checkout and build the code:
+Download the latest version from the [releases
+page](https://github.com/oxplot/pdfrankestein/releases). Alternatively,
+you can checkout and build the code:
 
 ```sh
 git clone https://github.com/oxplot/pdfrankestein.git
