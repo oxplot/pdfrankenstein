@@ -1,5 +1,5 @@
-PDFrankenstein intends to fill the gap on setups (mostly Linux and FOSS)
-where a good capable PDF annotator like Adobe Acrobat does not exist.
+PDFrankenstein is GUI tools that intends to fill the gap on Linux where
+a good capable PDF annotator like Adobe Acrobat does not exist.
 
 ## What can you do with it?
 
