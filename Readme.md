@@ -10,6 +10,10 @@ a good capable PDF annotator like Adobe Acrobat does not exist.
 - Multiple page PDFs are supported.
 - Anything you can do in Inkscape.
 
+## Thumbs are still missing!
+
+![sceenshot](./screenshot.png)
+
 ## Requirements
 
 You need a recent version of [Inkscape](https://inkscape.org/) and
