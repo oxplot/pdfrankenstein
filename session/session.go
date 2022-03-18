@@ -239,6 +239,10 @@ func (s *Session) IsAnnotated(page int) bool {
 	return ok
 }
 
+func (s *Session) HasAnnotations() bool {
+	return len(s.annotated) > 0
+}
+
 func (s *Session) Clear(page int) {
 	if page < 0 || page >= s.pageCount {
 		panic("invalid page number")

@@ -39,7 +39,7 @@ func NewPageGrid(pageCount int, tapHandler func(page int), clearHandler func(pag
 	labels := make([]*widget.Label, pageCount)
 	thumbs := make([]*canvas.Image, pageCount)
 	clears := make([]*widget.Button, pageCount)
-	root := container.NewGridWrap(fyne.NewSize(150, 150))
+	root := container.NewGridWrap(fyne.NewSize(150, 180))
 	for i := range labels {
 		labels[i] = widget.NewLabel(strconv.Itoa(i + 1))
 		labels[i].Alignment = fyne.TextAlignCenter
@@ -80,19 +80,25 @@ func run() error {
 
 	var sess *session.Session
 	sig := make(chan os.Signal, 1)
+	runExit := make(chan struct{}, 1)
 	done := make(chan struct{}, 1)
 	signal.Notify(sig, os.Interrupt)
 	go func() {
 		select {
 		case <-sig:
 			break
-		case <-done:
+		case <-runExit:
 			break
 		}
 		if sess != nil {
 			sess.Close()
 		}
 		win.Close()
+		close(done)
+	}()
+	defer func() {
+		close(runExit)
+		<-done
 	}()
 
 	fileNameLabel := widget.NewLabel("abc.pdf")
@@ -111,8 +117,11 @@ func run() error {
 
 			// Get the file path
 
-			if err != nil || r == nil {
+			if err != nil {
 				dialog.ShowError(err, win)
+				return
+			}
+			if r == nil {
 				return
 			}
 			r.Close()
@@ -151,12 +160,19 @@ func run() error {
 
 			gridScroll.Content = grid.Root()
 
-			fileNameLabel.SetText(r.URI().Name())
+			fileNameLabel.SetText("Annotating: " + r.URI().Name())
 			filePathLabel.SetText(path)
 			win.SetContent(openedContent)
 
 		}, win)
 	}))
+
+	closeSession := func() {
+		gridScroll.Content = widget.NewLabel("")
+		sess.Close()
+		sess = nil
+		win.SetContent(startContent)
+	}
 
 	openedContent = container.NewBorder(
 		container.NewBorder(
@@ -166,6 +182,9 @@ func run() error {
 					dialog.ShowFileSave(func(w fyne.URIWriteCloser, err error) {
 						if err != nil {
 							dialog.ShowError(err, win)
+							return
+						}
+						if w == nil {
 							return
 						}
 						w.Close()
@@ -183,10 +202,15 @@ func run() error {
 					}, win)
 				}),
 				widget.NewButton("Close", func() {
-					gridScroll.Content = widget.NewLabel("")
-					sess.Close()
-					sess = nil
-					win.SetContent(startContent)
+					if sess.HasAnnotations() {
+						dialog.ShowConfirm("", "You will lose your annotations if you continue", func(c bool) {
+							if c {
+								closeSession()
+							}
+						}, win)
+						return
+					}
+					closeSession()
 				}),
 			),
 			container.NewVBox(
