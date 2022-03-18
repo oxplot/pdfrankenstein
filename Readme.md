@@ -7,6 +7,7 @@ where a good capable PDF annotator like Adobe Acrobat does not exist.
 - Fill forms.
 - Add clickable links.
 - Draw on documents and highlight areas.
+- Multiple page PDFs are supported.
 - Anything you can do in Inkscape.
 
 ## Requirements
@@ -31,9 +32,10 @@ go build
 
 When you select a page to annotate, it's converted to SVG, made into a
 locked background of another SVG which is opened in Inkscape for you to
-draw on. Once done, the background is removed, the drawings are exported
-to a PDF and finally overlayed on top of the original page in the final
-PDF.
+draw on. After annotating all the pages needed, saving the file will go
+through all the annotated pages, and for each removes the added
+background, exports the page to PDF and finally overlays each annotation
+on the corresponding page of the orignal PDF and outputs the final file.
 
 Inkscape is used much like `vim` or `emacs` are used as your editor in
 the shell when you run `crontab -e`. Instead of `crontab` implementing
