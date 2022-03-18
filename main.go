@@ -88,11 +88,13 @@ func run() error {
 	}()
 
 	fileNameLabel := widget.NewLabel("abc.pdf")
+	fileNameLabel.TextStyle.Bold = true
 	filePathLabel := widget.NewLabel("/home/...")
+	filePathLabel.Wrapping = fyne.TextWrapBreak
 
 	var openedContent *fyne.Container
 
-	editingMsg := container.NewCenter(widget.NewLabel("Annotating in Inkscape ..."))
+	editingMsg := container.NewCenter(widget.NewLabel("Annotate in Inkscape.\nOnce done, save and close Inkscape and continue here."))
 	savingMsg := container.NewCenter(widget.NewLabel("Saving ..."))
 	gridScroll := container.NewVScroll(widget.NewLabel(""))
 

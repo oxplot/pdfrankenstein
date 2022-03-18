@@ -79,6 +79,7 @@ type Session struct {
 	path      string
 	pageCount int
 	tmpDir    string
+	annotated map[int]struct{}
 }
 
 func New(path string) (*Session, error) {
@@ -108,7 +109,7 @@ func New(path string) (*Session, error) {
 		return nil, err
 	}
 
-	return &Session{path: copyPath, pageCount: p, tmpDir: tmpDir}, nil
+	return &Session{copyPath, p, tmpDir, map[int]struct{}{}}, nil
 }
 
 func (s *Session) PageCount() int {
@@ -213,6 +214,7 @@ func (s *Session) Annotate(page int) (bool, error) {
 	modified := afterEditStat.ModTime() != beforeEditStat.ModTime()
 	if modified {
 		_ = os.Remove(s.thumbPath(page))
+		s.annotated[page] = struct{}{}
 	}
 	return modified, nil
 }
@@ -233,8 +235,8 @@ func (s *Session) IsAnnotated(page int) bool {
 	if page < 0 || page >= s.pageCount {
 		panic("invalid page number")
 	}
-	_, err := os.Stat(s.annotPath(page))
-	return err == nil
+	_, ok := s.annotated[page]
+	return ok
 }
 
 func (s *Session) Clear(page int) {
@@ -243,18 +245,25 @@ func (s *Session) Clear(page int) {
 	}
 	_ = os.Remove(s.annotPath(page))
 	_ = os.Remove(s.thumbPath(page))
+	delete(s.annotated, page)
 }
 
 func (s *Session) Save(path string) error {
 
+	// Shortcut for when no page is annotated
+
+	if len(s.annotated) == 0 {
+		return fileCopy(s.path, path)
+	}
+
 	// Covert all annotated pages to PDF
 
-	annoted := []int{}
+	annotated := []int{}
 	for i := 0; i < s.pageCount; i++ {
 		if !s.IsAnnotated(i) {
 			continue
 		}
-		annoted = append(annoted, i)
+		annotated = append(annotated, i)
 
 		annotPath := s.annotPath(i)
 
@@ -278,18 +287,12 @@ func (s *Session) Save(path string) error {
 		}
 	}
 
-	// Shortcut for when no page is annotated
-
-	if len(annoted) == 0 {
-		return fileCopy(s.path, path)
-	}
-
 	// Append all annotated PDFs into a single PDF
 
 	overlayPath := filepath.Join(s.tmpDir, "overlay.pdf")
 
 	args := []string{"--empty", "--pages"}
-	for _, p := range annoted {
+	for _, p := range annotated {
 		args = append(args, s.annotPath(p)+".pdf")
 	}
 	args = append(args, "--", overlayPath)
@@ -303,8 +306,8 @@ func (s *Session) Save(path string) error {
 
 	finalPath := filepath.Join(s.tmpDir, "final.pdf")
 
-	annotedStr := make([]string, len(annoted))
-	for i, p := range annoted {
+	annotedStr := make([]string, len(annotated))
+	for i, p := range annotated {
 		annotedStr[i] = strconv.Itoa(p + 1)
 	}
 	pageRange := strings.Join(annotedStr, ",")
@@ -323,4 +326,8 @@ func (s *Session) Close() {
 		_ = os.Remove(filepath.Join(s.tmpDir, f.Name()))
 	}
 	_ = os.Remove(s.tmpDir)
+	s.annotated = nil
+	s.tmpDir = ""
+	s.pageCount = -1
+	s.path = ""
 }
