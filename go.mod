@@ -1,4 +1,4 @@
-module github.com/oxplot/pdfrankestein
+module github.com/oxplot/pdfrankenstein
 
 go 1.18
 

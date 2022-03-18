@@ -1,4 +1,4 @@
-PDFrankestein intends to fill the gap on setups (mostly Linux and FOSS)
+PDFrankenstein intends to fill the gap on setups (mostly Linux and FOSS)
 where a good capable PDF annotator like Adobe Acrobat does not exist.
 
 ## What can you do with it?
@@ -17,14 +17,14 @@ You need a recent version of [Inkscape](https://inkscape.org/) and
 ## Download
 
 Download the latest version from the [releases
-page](https://github.com/oxplot/pdfrankestein/releases). Alternatively,
+page](https://github.com/oxplot/pdfrankenstein/releases). Alternatively,
 you can checkout and build the code:
 
 ```sh
-git clone https://github.com/oxplot/pdfrankestein.git
-cd pdfrankestein
+git clone https://github.com/oxplot/pdfrankenstein.git
+cd pdfrankenstein
 go build
-./pdfrankestein
+./pdfrankenstein
 ```
 
 ## How does it work?

@@ -14,11 +14,11 @@ jobs:
       - name: Dependencies
         run: sudo apt update && sudo apt install -y libgl1-mesa-dev xorg-dev
       - name: Build
-        run: go build -o pdfrankestein
+        run: go build -o pdfrankenstein
       - uses: actions/upload-artifact@v1
         with:
           name: linux-amd64
-          path: pdfrankestein
+          path: pdfrankenstein
 
   release:
     name: Release
@@ -31,14 +31,14 @@ jobs:
           name: linux-amd64
       - name: Compress artifacts
         run: |
-          ( cd linux-amd64; chmod +x pdfrankestein; zip ../pdfrankestein-linux-amd64.zip pdfrankestein )
+          ( cd linux-amd64; chmod +x pdfrankenstein; zip ../pdfrankenstein-linux-amd64.zip pdfrankenstein )
 
       - uses: actions/setup-python@v1
         with:
           python-version: '3.x'
       - uses: docker://ferrarimarco/github-changelog-generator:latest
         with:
-          args: -u oxplot -p pdfrankestein
+          args: -u oxplot -p pdfrankenstein
       - name: Generate Changelog
         id: gen_changelog
         env:
@@ -82,6 +82,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./pdfrankestein-linux-amd64.zip
-          asset_name: pdfrankestein-linux-amd64.zip
+          asset_path: ./pdfrankenstein-linux-amd64.zip
+          asset_name: pdfrankenstein-linux-amd64.zip
           asset_content_type: application/zip

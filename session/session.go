@@ -97,7 +97,7 @@ func New(path string) (*Session, error) {
 
 	// Create temp dir
 
-	tmpDir, err := ioutil.TempDir("", "pdfrankestein-*")
+	tmpDir, err := ioutil.TempDir("", "pdfrankenstein-*")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temp directory: %s", err)
 	}

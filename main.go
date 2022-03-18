@@ -17,11 +17,11 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 
-	"github.com/oxplot/pdfrankestein/session"
+	"github.com/oxplot/pdfrankenstein/session"
 )
 
 const (
-	progName = "PDFrankestein"
+	progName = "PDFrankenstein"
 )
 
 var (
@@ -235,7 +235,7 @@ func run() error {
 
 func main() {
 	log.SetFlags(0)
-	log.SetPrefix("pdfrankestein: ")
+	log.SetPrefix("pdfrankenstein: ")
 	flag.Parse()
 	if err := run(); err != nil {
 		log.Fatal(err)
