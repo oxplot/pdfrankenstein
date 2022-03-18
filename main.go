@@ -107,12 +107,14 @@ func run() error {
 	filePathLabel.Wrapping = fyne.TextWrapBreak
 
 	var openedContent *fyne.Container
+	var startContent *fyne.Container
 
 	editingMsg := container.NewCenter(widget.NewLabel("Annotate in Inkscape.\nOnce done, save and close Inkscape and continue here."))
 	savingMsg := container.NewCenter(widget.NewLabel("Saving ..."))
+	openingMsg := container.NewCenter(widget.NewLabel("Opening ..."))
 	gridScroll := container.NewVScroll(widget.NewLabel(""))
 
-	startContent := container.NewCenter(widget.NewButton("Open PDF File", func() {
+	startContent = container.NewCenter(widget.NewButton("Open PDF File", func() {
 		dialog.ShowFileOpen(func(r fyne.URIReadCloser, err error) {
 
 			// Get the file path
@@ -134,7 +136,9 @@ func run() error {
 
 			// Create a new annotation session and page grid
 
+			win.SetContent(openingMsg)
 			sess, err = session.New(path)
+			win.SetContent(startContent)
 			if err != nil {
 				dialog.ShowError(err, win)
 				return
