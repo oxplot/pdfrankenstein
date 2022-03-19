@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bytes"
+	_ "embed"
 	"flag"
 	"fmt"
 	"image"
+	"image/png"
 	"log"
 	"os"
 	"os/signal"
@@ -25,8 +28,18 @@ const (
 )
 
 var (
-	emptyImg = image.NewRGBA(image.Rect(0, 0, 1, 1))
+	//go:embed loading.png
+	loadingImgBytes []byte
+	loadingImg      image.Image
 )
+
+func init() {
+	var err error
+	loadingImg, err = png.Decode(bytes.NewReader(loadingImgBytes))
+	if err != nil {
+		panic(err)
+	}
+}
 
 type PageGrid struct {
 	labels []*widget.Label
@@ -43,7 +56,7 @@ func NewPageGrid(pageCount int, tapHandler func(page int), clearHandler func(pag
 	for i := range labels {
 		labels[i] = widget.NewLabel(strconv.Itoa(i + 1))
 		labels[i].Alignment = fyne.TextAlignCenter
-		thumbs[i] = canvas.NewImageFromImage(emptyImg)
+		thumbs[i] = canvas.NewImageFromImage(loadingImg)
 		thumbs[i].FillMode = canvas.ImageFillContain
 		func(i int) { clears[i] = widget.NewButton("clear annots", func() { clearHandler(i) }) }(i)
 		clears[i].Hide()

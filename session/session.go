@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"text/template"
 )
 
@@ -79,6 +80,7 @@ type Session struct {
 	path      string
 	pageCount int
 	tmpDir    string
+	mu        sync.Mutex
 	annotated map[int]struct{}
 }
 
@@ -109,7 +111,12 @@ func New(path string) (*Session, error) {
 		return nil, err
 	}
 
-	return &Session{copyPath, p, tmpDir, map[int]struct{}{}}, nil
+	return &Session{
+		path:      copyPath,
+		pageCount: p,
+		tmpDir:    tmpDir,
+		annotated: map[int]struct{}{},
+	}, nil
 }
 
 func (s *Session) PageCount() int {
@@ -214,7 +221,9 @@ func (s *Session) Annotate(page int) (bool, error) {
 	modified := afterEditStat.ModTime() != beforeEditStat.ModTime()
 	if modified {
 		_ = os.Remove(s.thumbPath(page))
+		s.mu.Lock()
 		s.annotated[page] = struct{}{}
+		s.mu.Unlock()
 	}
 	return modified, nil
 }
@@ -235,11 +244,15 @@ func (s *Session) IsAnnotated(page int) bool {
 	if page < 0 || page >= s.pageCount {
 		panic("invalid page number")
 	}
+	s.mu.Lock()
 	_, ok := s.annotated[page]
+	s.mu.Unlock()
 	return ok
 }
 
 func (s *Session) HasAnnotations() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return len(s.annotated) > 0
 }
 
@@ -249,16 +262,21 @@ func (s *Session) Clear(page int) {
 	}
 	_ = os.Remove(s.annotPath(page))
 	_ = os.Remove(s.thumbPath(page))
+	s.mu.Lock()
 	delete(s.annotated, page)
+	s.mu.Unlock()
 }
 
 func (s *Session) Save(path string) error {
 
 	// Shortcut for when no page is annotated
 
+	s.mu.Lock()
 	if len(s.annotated) == 0 {
+		s.mu.Unlock()
 		return fileCopy(s.path, path)
 	}
+	s.mu.Unlock()
 
 	// Covert all annotated pages to PDF
 
@@ -330,7 +348,9 @@ func (s *Session) Close() {
 		_ = os.Remove(filepath.Join(s.tmpDir, f.Name()))
 	}
 	_ = os.Remove(s.tmpDir)
+	s.mu.Lock()
 	s.annotated = nil
+	s.mu.Unlock()
 	s.tmpDir = ""
 	s.pageCount = -1
 	s.path = ""
