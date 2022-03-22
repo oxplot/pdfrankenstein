@@ -10,6 +10,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -127,6 +128,43 @@ func run() error {
 	openingMsg := container.NewCenter(widget.NewLabel("Opening ..."))
 	gridScroll := container.NewVScroll(widget.NewLabel(""))
 
+	open := func(path string) {
+		var err error
+
+		win.SetContent(openingMsg)
+		sess, err = session.New(path)
+		win.SetContent(startContent)
+		if err != nil {
+			dialog.ShowError(err, win)
+			return
+		}
+		var grid *PageGrid
+		grid = NewPageGrid(sess.PageCount(), func(page int) {
+			win.SetContent(editingMsg)
+			defer win.SetContent(openedContent)
+
+			modified, err := sess.Annotate(page)
+			if err != nil {
+				dialog.ShowError(err, win)
+				return
+			}
+			if modified {
+				grid.SetThumbnail(page, nil)
+			}
+			grid.SetAnnotated(page, sess.IsAnnotated(page))
+		}, func(page int) {
+			sess.Clear(page)
+			grid.SetAnnotated(page, false)
+		})
+
+		gridScroll.Content = grid.Root()
+
+		_, name := filepath.Split(path)
+		fileNameLabel.SetText("Annotating: " + name)
+		filePathLabel.SetText(path)
+		win.SetContent(openedContent)
+	}
+
 	startContent = container.NewCenter(widget.NewButton("Open PDF File", func() {
 		dialog.ShowFileOpen(func(r fyne.URIReadCloser, err error) {
 
@@ -146,40 +184,7 @@ func run() error {
 				return
 			}
 			path = strings.TrimPrefix(path, "file://")
-
-			// Create a new annotation session and page grid
-
-			win.SetContent(openingMsg)
-			sess, err = session.New(path)
-			win.SetContent(startContent)
-			if err != nil {
-				dialog.ShowError(err, win)
-				return
-			}
-			var grid *PageGrid
-			grid = NewPageGrid(sess.PageCount(), func(page int) {
-				win.SetContent(editingMsg)
-				defer win.SetContent(openedContent)
-
-				modified, err := sess.Annotate(page)
-				if err != nil {
-					dialog.ShowError(err, win)
-					return
-				}
-				if modified {
-					grid.SetThumbnail(page, nil)
-				}
-				grid.SetAnnotated(page, sess.IsAnnotated(page))
-			}, func(page int) {
-				sess.Clear(page)
-				grid.SetAnnotated(page, false)
-			})
-
-			gridScroll.Content = grid.Root()
-
-			fileNameLabel.SetText("Annotating: " + r.URI().Name())
-			filePathLabel.SetText(path)
-			win.SetContent(openedContent)
+			open(path)
 
 		}, win)
 	}))
@@ -241,7 +246,11 @@ func run() error {
 
 	win.Resize(fyne.NewSize(600, 500))
 	win.SetContent(startContent)
-	win.ShowAndRun()
+	win.Show()
+	if flag.Arg(0) != "" {
+		open(flag.Arg(0))
+	}
+	ap.Run()
 
 	return nil
 }
