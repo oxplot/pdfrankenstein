@@ -19,6 +19,12 @@ a good capable PDF annotator like Adobe Acrobat does not exist.
 You need a recent version of [Inkscape](https://inkscape.org/) and
 [qpdf](https://github.com/qpdf/qpdf).
 
+## Install
+
+Packages are available for:
+
+- [Arch Linux](https://aur.archlinux.org/packages/pdfrankenstein): `yay -S pdfrankenstein`
+
 ## Download
 
 Download the latest version from the [releases
