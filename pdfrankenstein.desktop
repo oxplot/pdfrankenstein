@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=PDFrankenstein
+GenericName=PDF Annotator
+Comment=PDF Annotator of Nightmares
+Keywords=pdf;annotator;editor;
+Exec=pdfrankenstein %f
+Icon=pdfrankenstein
+Terminal=false
+TryExec=pdfrankenstein
+Type=Application
+MimeType=application/pdf;
+Categories=Office;Graphics;2DGraphics;VectorGraphics;
