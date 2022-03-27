@@ -76,6 +76,7 @@ func fileCopy(src, dst string) error {
 	return err
 }
 
+// Session represents an annotation session.
 type Session struct {
 	path      string
 	pageCount int
@@ -84,6 +85,7 @@ type Session struct {
 	annotated map[int]struct{}
 }
 
+// New opens the given PDF file by path and returns a new session.
 func New(path string) (*Session, error) {
 
 	// Get page count
@@ -119,10 +121,12 @@ func New(path string) (*Session, error) {
 	}, nil
 }
 
+// PageCount returns the number of pages in the PDF document.
 func (s *Session) PageCount() int {
 	return s.pageCount
 }
 
+// Thumbnail returns the path to temporary thumbnail image of the given page.
 func (s *Session) Thumbnail(page int) (string, error) {
 
 	if page < 0 || page >= s.pageCount {
@@ -137,19 +141,20 @@ func (s *Session) Thumbnail(page int) (string, error) {
 		return thumbPath, nil
 	}
 
-	// Otherwise, run inkscape to generate image
+	// Otherwise, run pdftocairo to generate image
 
-	cmd := exec.Command("inkscape", "--pdf-page="+strconv.Itoa(page+1), "--export-type=png",
-		"--export-area-page", "--export-dpi=20", "--pdf-poppler",
-		"--export-background=white", "--export-filename="+thumbPath+".tmp", s.path)
+	cmd := exec.Command("pdftocairo", "-f", strconv.Itoa(page+1), "-png",
+		"-singlefile", "-scale-to", "200", s.path, thumbPath+".tmp")
 	if _, err := cmd.Output(); err != nil {
-		return "", fmt.Errorf("failed to generate thumb for page %s of '%s': %s", page, s.path, cmdErr(err))
+		return "", fmt.Errorf("failed to generate thumb for page %d of '%s': %s", page, s.path, cmdErr(err))
 	}
-	_ = os.Rename(thumbPath+".tmp", thumbPath)
+	_ = os.Rename(thumbPath+".tmp.png", thumbPath)
 
 	return thumbPath, nil
 }
 
+// Annotate blocks and launches Inkscape to annotate the page.
+// It returns true if the page was annotated by the user this time around.
 func (s *Session) Annotate(page int) (bool, error) {
 
 	if page < 0 || page >= s.pageCount {
@@ -163,7 +168,7 @@ func (s *Session) Annotate(page int) (bool, error) {
 		cmd := exec.Command("inkscape", "--pdf-page="+strconv.Itoa(page+1), "--export-type=svg",
 			"--pdf-poppler", "--export-filename="+srcPath+".svg", s.path)
 		if _, err := cmd.Output(); err != nil {
-			return false, fmt.Errorf("failed to convert page %s of '%s' to svg: %s", page, s.path, cmdErr(err))
+			return false, fmt.Errorf("failed to convert page %d of '%s' to svg: %s", page, s.path, cmdErr(err))
 		}
 		_ = os.Rename(srcPath+".svg", srcPath)
 	}
@@ -240,6 +245,7 @@ func (s *Session) thumbPath(page int) string {
 	return filepath.Join(s.tmpDir, fmt.Sprintf("thumb-%d.png", page))
 }
 
+// IsAnnotated returns true if the given page has any annotations.
 func (s *Session) IsAnnotated(page int) bool {
 	if page < 0 || page >= s.pageCount {
 		panic("invalid page number")
@@ -250,12 +256,14 @@ func (s *Session) IsAnnotated(page int) bool {
 	return ok
 }
 
+// HasAnnotations returns true if any of the pages has annotations.
 func (s *Session) HasAnnotations() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return len(s.annotated) > 0
 }
 
+// Clear clears the annotations for the given page.
 func (s *Session) Clear(page int) {
 	if page < 0 || page >= s.pageCount {
 		panic("invalid page number")
@@ -267,6 +275,7 @@ func (s *Session) Clear(page int) {
 	s.mu.Unlock()
 }
 
+// Save saves the annotated PDF to the given path.
 func (s *Session) Save(path string) error {
 
 	// Shortcut for when no page is annotated
@@ -342,6 +351,8 @@ func (s *Session) Save(path string) error {
 	return fileCopy(finalPath, path)
 }
 
+// Close closes the annotation session and releases all resources.
+// This instance cannot be used after a call to Close().
 func (s *Session) Close() {
 	files, _ := ioutil.ReadDir(s.tmpDir)
 	for _, f := range files {
@@ -354,4 +365,9 @@ func (s *Session) Close() {
 	s.tmpDir = ""
 	s.pageCount = -1
 	s.path = ""
+}
+
+// IsClosed returns true if Close() has been called earlier.
+func (s *Session) IsClosed() bool {
+	return s.pageCount == -1
 }
