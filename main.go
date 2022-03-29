@@ -349,6 +349,12 @@ func closeFile() bool {
 		}
 	}
 
+	pageFlow.GetChildren().Foreach(func(i any) {
+		if c, ok := i.(gtk.IWidget); ok {
+			pageFlow.Remove(c)
+		}
+	})
+
 	annotSinceLastSave = false
 	resetUIToStart()
 	sessMu.Lock()
