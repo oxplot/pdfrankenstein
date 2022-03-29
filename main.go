@@ -362,6 +362,8 @@ func closeFile() bool {
 }
 
 func resetUIToStart() {
+	hdrBar.SetTitle("")
+	hdrBar.SetSubtitle("")
 	openBut.Show()
 	saveBut.Hide()
 	closeBut.Hide()
