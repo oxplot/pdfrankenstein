@@ -445,6 +445,22 @@ func initUI() error {
 	mainWin.Connect("destroy", func() {
 		gtk.MainQuit()
 	})
+
+	dragTarget, err := gtk.TargetEntryNew("text/uri-list", gtk.TARGET_OTHER_APP, 0)
+	if err != nil {
+		return fmt.Errorf("failed to create drag target: %s", err)
+	}
+	mainWin.DragDestSet(gtk.DEST_DEFAULT_ALL, []gtk.TargetEntry{*dragTarget}, gdk.ACTION_COPY)
+	mainWin.Connect("drag-data-received", func(_ *gtk.Window, _ *gdk.DragContext, x, y int, s *gtk.SelectionData, m int, t uint) {
+		uri := strings.SplitN(string(s.GetData()), "\r", 2)[0]
+		if !strings.HasPrefix(uri, "file://") {
+			return
+		}
+		if closeFile() {
+			open(strings.TrimPrefix(uri, "file://"))
+		}
+	})
+
 	iconPix, err := gdk.PixbufNewFromBytesOnly(appIcon)
 	if err != nil {
 		return fmt.Errorf("failed to create main icon pixbuf: %s", err)
