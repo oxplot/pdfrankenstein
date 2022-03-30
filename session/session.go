@@ -90,7 +90,7 @@ func New(path string) (*Session, error) {
 
 	// Get page count
 
-	out, err := exec.Command("qpdf", "--show-npages", path).Output()
+	out, err := exec.Command("qpdf", "--warning-exit-0", "--show-npages", path).Output()
 	if err != nil {
 		return nil, cmdErr(err)
 	}
@@ -322,7 +322,7 @@ func (s *Session) Save(path string) error {
 
 	overlayPath := filepath.Join(s.tmpDir, "overlay.pdf")
 
-	args := []string{"--empty", "--pages"}
+	args := []string{"--warning-exit-0", "--empty", "--pages"}
 	for _, p := range annotated {
 		args = append(args, s.annotPath(p)+".pdf")
 	}
@@ -343,7 +343,7 @@ func (s *Session) Save(path string) error {
 	}
 	pageRange := strings.Join(annotedStr, ",")
 
-	cmd = exec.Command("qpdf", s.path, "--overlay", overlayPath, "--to="+pageRange, "--", finalPath)
+	cmd = exec.Command("qpdf", "--warning-exit-0", s.path, "--overlay", overlayPath, "--to="+pageRange, "--", finalPath)
 	if _, err := cmd.Output(); err != nil {
 		return fmt.Errorf("failed to overlay annotated pages to '%s': %s", finalPath, cmdErr(err))
 	}
