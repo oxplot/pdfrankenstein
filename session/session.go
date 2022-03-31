@@ -144,7 +144,7 @@ func (s *Session) Thumbnail(page int) (string, error) {
 	// Otherwise, run pdftocairo to generate image
 
 	cmd := exec.Command("pdftocairo", "-f", strconv.Itoa(page+1), "-png",
-		"-singlefile", "-scale-to", "200", s.path, thumbPath+".tmp")
+		"-singlefile", "-cropbox", "-scale-to", "200", s.path, thumbPath+".tmp")
 	if _, err := cmd.Output(); err != nil {
 		return "", fmt.Errorf("failed to generate thumb for page %d of '%s': %s", page, s.path, cmdErr(err))
 	}
