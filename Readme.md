@@ -17,6 +17,7 @@ a good capable PDF annotator like Adobe Acrobat does not exist.
 - Recent version of [Inkscape](https://inkscape.org/)
 - [poppler-utils](https://poppler.freedesktop.org/)
 - [qpdf](https://github.com/qpdf/qpdf)
+- Go 1.18 (build only)
 
 ## Install
 
