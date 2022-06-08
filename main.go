@@ -306,14 +306,13 @@ func annotate(page int) {
 	mainStack.SetVisibleChildName("continue-in-inkscape")
 
 	go func() {
-		defer mainWin.SetSensitive(true)
-		defer mainStack.SetVisibleChildName("pages")
-
 		sessMu.Lock()
 		changed, err := sess.Annotate(page)
 		sessMu.Unlock()
 
 		glib.IdleAdd(func() {
+			mainWin.SetSensitive(true)
+			mainStack.SetVisibleChildName("pages")
 			if err != nil {
 				showErrMsg("Cannot annotate file", err.Error())
 				return
