@@ -1,0 +1,60 @@
+project_name: pdfrankenstein
+release:
+  github:
+    owner: oxplot
+    name: pdfrankenstein
+  name_template: '{{.Tag}}'
+builds:
+  - id: pdfrankenstein
+    goos:
+      - linux
+    goarch:
+      - amd64
+    targets:
+      - linux_amd64_v1
+    dir: .
+    main: .
+    binary: pdfrankenstein
+    env:
+      - CGO_ENABLED=1
+    builder: go
+    gobinary: go
+    command: build
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}} -X main.builtBy=goreleaser
+archives:
+  - id: default
+    name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+    format: tar.gz
+    files:
+      - src: LICENSE
+      - src: Readme.md
+nfpms:
+  - vendor: oxplot
+    homepage: https://github.com/oxplot/pdfrankenstein
+    maintainer: Mansour Behabadi <mansour@oxplot.com>
+    description: |-
+      PDFrankenstein is a GUI tool that intends to fill the gap on Linux
+      where a good capable PDF annotator like Adobe Acrobat does not exist.
+    license: BSD-3-Clause license
+    formats:
+      - apk
+      - deb
+      - rpm
+snapshot:
+  name_template: '{{ incpatch .Version }}-next'
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+changelog:
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+  sort: asc
+dist: dist
+source:
+  name_template: '{{ .ProjectName }}-{{ .Version }}'
+  format: tar.gz
+gomod:
+  gobinary: go
