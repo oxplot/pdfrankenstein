@@ -388,11 +388,25 @@ func save() {
 	}
 	defer ofd.Destroy()
 	ofd.SetLocalOnly(true)
+
+	filter, err := gtk.FileFilterNew()
+	if err != nil {
+		log.Fatalf("failed to create file filter: %s", err)
+	}
+	filter.SetName("PDF documents")
+	filter.AddPattern("*.pdf")
+	filter.AddPattern("*.PDF")
+	ofd.AddFilter(filter)
+
 	if ofd.Run() != gtk.RESPONSE_OK {
 		return
 	}
 	path := ofd.GetFilename()
 	ofd.Close()
+
+	if !strings.HasSuffix(strings.ToLower(path), ".pdf") {
+		path += ".pdf"
+	}
 
 	sessMu.Lock()
 	err = sess.Save(path)
