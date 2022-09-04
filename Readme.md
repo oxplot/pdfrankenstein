@@ -1,5 +1,4 @@
-PDFrankenstein is a GUI tool that intends to fill the gap on Linux where
-a good capable PDF annotator like Adobe Acrobat does not exist.
+PDFrankenstein is a GUI PDF annotator which uses Inkscape for editing.
 
 ## What can you do with it?
 
