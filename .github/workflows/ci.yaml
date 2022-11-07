@@ -24,6 +24,11 @@ jobs:
         uses: actions/setup-go@v2
         with:
           go-version: 1.18
+      - name: Install OS deps
+        run: |
+          set -e
+          sudo apt update
+          sudo apt install -y libgtk-3-dev libglib2.0-dev libgdk-pixbuf2.0-dev
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v2
         with:
