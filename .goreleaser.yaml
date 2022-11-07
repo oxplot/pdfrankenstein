@@ -4,6 +4,7 @@ release:
     owner: oxplot
     name: pdfrankenstein
   name_template: '{{.Tag}}'
+  draft: true
 builds:
   - id: pdfrankenstein
     goos:
