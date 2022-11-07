@@ -1,90 +1,34 @@
-name: Build Static Binaries
-on: [push]
+name: goreleaser
+
+on:
+  push:
+    tags:
+      - '*'
+
+permissions:
+  contents: write
+  # packages: write
+  # issues: write
 
 jobs:
-
-  build-linux-amd64:
-    name: Build Linux amd64
+  goreleaser:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-go@v1
+      - name: Checkout
+        uses: actions/checkout@v2
         with:
-          go-version: '1.18'
-      - name: Dependencies
-        run: |
-          set -e
-          sudo apt update
-          sudo apt install -y libgtk-3-dev libglib2.0-dev libgdk-pixbuf2.0-dev
-      - name: Build
-        run: go build -o pdfrankenstein
-      - uses: actions/upload-artifact@v1
+          fetch-depth: 0
+      - name: Fetch all tags
+        run: git fetch --force --tags
+      - name: Set up Go
+        uses: actions/setup-go@v2
         with:
-          name: linux-amd64
-          path: pdfrankenstein
-
-  release:
-    name: Release
-    needs: [build-linux-amd64]
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
-    steps:
-      - uses: actions/download-artifact@v1
+          go-version: 1.18
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v2
         with:
-          name: linux-amd64
-      - name: Compress artifacts
-        run: |
-          ( cd linux-amd64; chmod +x pdfrankenstein; zip ../pdfrankenstein-linux-amd64.zip pdfrankenstein )
-
-      - uses: actions/setup-python@v1
-        with:
-          python-version: '3.x'
-      - uses: docker://ferrarimarco/github-changelog-generator:latest
-        with:
-          args: -u oxplot -p pdfrankenstein
-      - name: Generate Changelog
-        id: gen_changelog
-        env:
-          RELEASE_REF: ${{ github.ref }}
-        run: |
-          cat CHANGELOG.md
-          body="$(< CHANGELOG.md python -c '
-          import sys
-          import os
-
-          tag = os.getenv("RELEASE_REF").replace("refs/tags/", "")
-
-          in_block = False
-          for l in sys.stdin:
-            if l.startswith("## [%s]" % tag):
-              in_block = True
-            elif l.startswith("## ["):
-              in_block = False
-            if in_block:
-              sys.stdout.write(l)
-          ')"
-          # https://github.com/actions/create-release/issues/25#issuecomment-575435307
-          body="${body//$'%'/%25}"
-          body="${body//$'\n'/%0A}"
-          body="${body//$'\r'/%0D}"
-          echo ref $RELEASE_REF
-          echo body $body
-          echo "::set-output name=release_body::$body"
-
-      - id: create_release
-        uses: actions/create-release@latest
+          distribution: goreleaser
+          version: latest
+          args: release --rm-dist
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: ${{ github.ref }}
-          body: ${{ steps.gen_changelog.outputs.release_body }}
-          draft: true
-      - uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./pdfrankenstein-linux-amd64.zip
-          asset_name: pdfrankenstein-linux-amd64.zip
-          asset_content_type: application/zip
