@@ -34,9 +34,7 @@ nfpms:
   - vendor: oxplot
     homepage: https://github.com/oxplot/pdfrankenstein
     maintainer: Mansour Behabadi <mansour@oxplot.com>
-    description: |-
-      PDFrankenstein is a GUI tool that intends to fill the gap on Linux
-      where a good capable PDF annotator like Adobe Acrobat does not exist.
+    description: PDFrankenstein is a GUI PDF annotator which uses Inkscape for editing.
     license: BSD-3-Clause license
     formats:
       - apk
