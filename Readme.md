@@ -33,7 +33,7 @@ you can checkout and build the code:
 ```sh
 git clone https://github.com/oxplot/pdfrankenstein.git
 cd pdfrankenstein
-go build
+go build # This will take a LOOOOONG time
 ./pdfrankenstein
 ```
 
