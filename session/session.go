@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"text/template"
+
+	"github.com/Masterminds/semver/v3"
 )
 
 var (
@@ -153,6 +155,25 @@ func (s *Session) Thumbnail(page int) (string, error) {
 	return thumbPath, nil
 }
 
+func getInkscapeVersion() (*semver.Version, error) {
+
+	cmd := exec.Command("inkscape", "--version")
+	verBytes, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get inkscape version: %s", cmdErr(err))
+	}
+	verMatch := regexp.MustCompile(`(?i)inkscape\s+([0-9.]+)`).FindStringSubmatch(string(verBytes))
+	if verMatch == nil {
+		return nil, fmt.Errorf("failed to parse inkscape version: %s", string(verBytes))
+	}
+	sv, err := semver.NewVersion(verMatch[1])
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse inkscape version: %s", string(verMatch[1]))
+	}
+
+	return sv, nil
+}
+
 // Annotate blocks and launches Inkscape to annotate the page.
 // It returns true if the page was annotated by the user this time around.
 func (s *Session) Annotate(page int) (bool, error) {
@@ -165,10 +186,25 @@ func (s *Session) Annotate(page int) (bool, error) {
 
 	srcPath := s.srcPath(page)
 	if _, err := os.Stat(srcPath); err != nil {
-		cmd := exec.Command("inkscape", "--pages="+strconv.Itoa(page+1), "--export-type=svg",
+
+		// Page selection flag has changed between Inkscape versions. Check the
+		// inkscape version first.
+
+		sv, err := getInkscapeVersion()
+		if err != nil {
+			return false, err
+		}
+		var pagesFlag string
+		if sv.LessThan(semver.MustParse("1.3.0")) {
+			pagesFlag = "--pdf-page="
+		} else {
+			pagesFlag = "--pages="
+		}
+
+		cmd := exec.Command("inkscape", pagesFlag+strconv.Itoa(page+1), "--export-type=svg",
 			"--pdf-poppler", "--export-filename="+srcPath+".svg", s.path)
 		if _, err := cmd.Output(); err != nil {
-			return false, fmt.Errorf("failed to convert page %d of '%s' to svg: %s", page, s.path, cmdErr(err))
+			return false, fmt.Errorf("failed to convert page %d of '%s' to svg: %s", page+1, s.path, cmdErr(err))
 		}
 		_ = os.Rename(srcPath+".svg", srcPath)
 	}
