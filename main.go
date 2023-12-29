@@ -67,6 +67,8 @@ var (
 
 	pageImages []*gtk.Image
 	pageLabels []*gtk.Label
+
+	openFilePath string
 )
 
 func showErrMsg(title string, msg string) {
@@ -209,6 +211,7 @@ func open(path string) {
 		return
 	}
 
+	openFilePath = path
 	dir, file := filepath.Split(shrinkHome(path))
 	hdrBar.SetTitle(file)
 	hdrBar.SetSubtitle(dir)
@@ -363,6 +366,7 @@ func closeFile() bool {
 	}
 	sessMu.Unlock()
 
+	openFilePath = ""
 	return true
 }
 
@@ -397,6 +401,8 @@ func save() {
 	filter.AddPattern("*.pdf")
 	filter.AddPattern("*.PDF")
 	ofd.AddFilter(filter)
+
+	ofd.SetFilename(openFilePath)
 
 	if ofd.Run() != gtk.RESPONSE_OK {
 		return
