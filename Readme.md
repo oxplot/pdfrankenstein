@@ -23,6 +23,7 @@ PDFrankenstein is a GUI PDF annotator which uses Inkscape for editing.
 Packages are available for:
 
 - [Arch Linux](https://aur.archlinux.org/packages/pdfrankenstein): `yay -S pdfrankenstein`
+- [mise](https://mise.jdx.dev/): `mise use -g ubi:oxplot/pdfrankenstein`
 
 ## Download
 
